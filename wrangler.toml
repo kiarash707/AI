@@ -1,0 +1,31 @@
+name = "kayro-ai"
+main = "worker/index.ts"
+compatibility_date = "2026-10-21"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kayro-ai"
+database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+ALLOWED_ORIGIN = ""
+
+# Local-only development bypass. Never configure DEV_MODE in the production environment.
+[env.dev.vars]
+ALLOWED_ORIGIN = ""
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "kayro-ai"
+database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["*/5 * * * *"]

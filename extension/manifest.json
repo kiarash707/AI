@@ -1,0 +1,1 @@
+{"manifest_version":3,"name":"KAYRO AI Browser Bridge","version":"0.1.0","description":"Secure pairing bridge for KAYRO AI. Actions require explicit user approval.","permissions":["activeTab","storage"],"host_permissions":[],"action":{"default_title":"KAYRO AI","default_popup":"popup.html"},"background":{"service_worker":"background.js","type":"module"}}
