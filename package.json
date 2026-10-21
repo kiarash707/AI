@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "check": "tsc -b --pretty false",
+    "worker:dev": "wrangler dev --env dev --var DEV_MODE:true --ip 0.0.0.0 --port 8789",
+    "build": "npm run check && vite build",
+    "check": "tsc -b --pretty false && tsc --noEmit -p tsconfig.worker.json",
     "test": "vitest run",
+    "format:check": "prettier --check src worker design-system .github README.md package.json tsconfig.json tsconfig.worker.json vite.config.ts .prettierrc.json",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -22,6 +24,8 @@
     "@cloudflare/workers-types": "^5.20261021.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "vitest": "latest"
+    "prettier": "^3.9.10",
+    "vitest": "latest",
+    "wrangler": "^4.151.3"
   }
 }
