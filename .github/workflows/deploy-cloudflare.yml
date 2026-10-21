@@ -1,0 +1,213 @@
+name: Deploy KAYRO AI to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kayro-ai-cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, migrate D1, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate Cloudflare credentials
+        shell: bash
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "::error::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID under GitHub Settings > Secrets and variables > Actions, then re-run this workflow."
+            exit 1
+          fi
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check frontend and Worker types
+        run: npm run check
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Find or create the KAYRO D1 database
+        id: d1
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          async function cf(path, method = 'GET', body) {
+            const res = await fetch('https://api.cloudflare.com/client/v4' + path, {
+              method,
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.success === false) {
+              const messages = (data.errors || []).map(e => e.message).join('; ') || ('HTTP ' + res.status);
+              throw new Error('Cloudflare D1 request failed: ' + messages);
+            }
+            return data.result;
+          }
+          (async () => {
+            const path = '/accounts/' + encodeURIComponent(account) + '/d1/database?name=kayro-ai&per_page=100';
+            const listed = await cf(path);
+            const items = Array.isArray(listed) ? listed : (listed?.result || []);
+            let db = items.find(x => x.name === 'kayro-ai');
+            if (!db) {
+              db = await cf('/accounts/' + encodeURIComponent(account) + '/d1/database', 'POST', { name: 'kayro-ai' });
+              console.log('Created the KAYRO AI D1 database.');
+            } else {
+              console.log('Reusing the existing KAYRO AI D1 database.');
+            }
+            const uuid = db.uuid || db.id || db.database_id;
+            if (!uuid) throw new Error('Cloudflare returned no D1 database identifier.');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'database_id=' + uuid + '\n');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### D1 database\nThe KAYRO AI database was found or created successfully.\n');
+          })().catch(e => { console.error(e.message); process.exit(1); });
+          NODE
+
+      - name: Bind the database ID for this runner only
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'wrangler.toml';
+          let config = fs.readFileSync(path, 'utf8');
+          const id = process.env.D1_DATABASE_ID;
+          const matches = config.match(/database_id\s*=\s*"[^"]*"/g) || [];
+          if (matches.length !== 2) throw new Error('Expected exactly two D1 bindings in wrangler.toml; found ' + matches.length);
+          config = config.replace(/database_id\s*=\s*"[^"]*"/g, 'database_id = "' + id + '"');
+          fs.writeFileSync(path, config);
+          console.log('The D1 ID was injected into the CI runner only; no ID or credential was written back to GitHub.');
+          NODE
+
+      - name: Prepare optional runtime secrets without printing values
+        env:
+          AI_CREDENTIALS_ENCRYPTION_KEY: ${{ secrets.AI_CREDENTIALS_ENCRYPTION_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = process.env.RUNNER_TEMP + '/kayro-runtime-secrets.json';
+          const names = ['AI_CREDENTIALS_ENCRYPTION_KEY', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET'];
+          const secrets = Object.fromEntries(names
+            .filter(name => typeof process.env[name] === 'string' && process.env[name].trim() !== '')
+            .map(name => [name, process.env[name].trim()]));
+          if (Object.keys(secrets).length) {
+            fs.writeFileSync(path, JSON.stringify(secrets), { mode: 0o600 });
+            fs.appendFileSync(process.env.GITHUB_OUTPUT || '/dev/null', 'has_secrets=true\n');
+            console.log('Prepared ' + Object.keys(secrets).length + ' runtime secret(s) for secure upload (names and values are not printed).');
+          } else {
+            console.log('No optional runtime secrets were provided; the app will remain fail-closed until configured.');
+          }
+          NODE
+
+      - name: Apply remote D1 migrations
+        run: npx --yes wrangler@4 d1 migrations apply kayro-ai --remote
+
+      - name: Deploy Worker and static site
+        shell: bash
+        run: |
+          SECRET_FILE="$RUNNER_TEMP/kayro-runtime-secrets.json"
+          if [[ -f "$SECRET_FILE" ]]; then
+            npx --yes wrangler@4 deploy --strict --keep-vars --secrets-file "$SECRET_FILE"
+          else
+            npx --yes wrangler@4 deploy --strict --keep-vars
+          fi
+
+      - name: Publish deployment URL and smoke-test health
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          async function cf(path) {
+            const res = await fetch('https://api.cloudflare.com/client/v4' + path, {
+              headers: { Authorization: 'Bearer ' + token },
+            });
+            const data = await res.json();
+            if (!res.ok || data.success === false) {
+              throw new Error((data.errors || []).map(e => e.message).join('; ') || ('HTTP ' + res.status));
+            }
+            return data.result;
+          }
+          (async () => {
+            let url = '';
+            try {
+              const sub = await cf('/accounts/' + encodeURIComponent(account) + '/workers/subdomain');
+              if (sub && sub.subdomain) url = 'https://kayro-ai.' + sub.subdomain + '.workers.dev';
+            } catch (e) {
+              console.log('Could not resolve the workers.dev hostname through the API; check the Worker in Cloudflare Dashboard.');
+            }
+            if (!url) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Deployment\nThe deploy command completed, but this account did not return a workers.dev hostname. Open Cloudflare Dashboard → Workers & Pages → kayro-ai → Visit.\n');
+              return;
+            }
+            let health = 'not verified';
+            for (let i = 0; i < 8; i++) {
+              try {
+                const r = await fetch(url + '/api/health', { signal: AbortSignal.timeout(5000) });
+                const d = await r.json();
+                if (r.ok && d.ok && d.database === 'ok') { health = 'PASS — Worker and D1 responded'; break; }
+                health = 'FAIL — ' + JSON.stringify(d);
+              } catch { health = 'waiting for Worker startup'; }
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '### Deployment\n' +
+              '- Site: ' + url + '\n' +
+              '- Health endpoint: ' + url + '/api/health\n' +
+              '- Smoke test: ' + health + '\n' +
+              '- Note: chat/API operations remain fail-closed until Cloudflare Access owner settings and the encryption key are configured.\n');
+            console.log('Deployed URL: ' + url);
+            console.log('Health check: ' + health);
+            if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
+              const r = await fetch('https://api.telegram.org/bot' + process.env.TELEGRAM_BOT_TOKEN + '/setWebhook', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ url: url + '/api/telegram/webhook', secret_token: process.env.TELEGRAM_WEBHOOK_SECRET }),
+              });
+              const d = await r.json();
+              if (!r.ok || !d.ok) throw new Error('Telegram webhook registration failed; verify TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in GitHub Actions secrets.');
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '- Telegram webhook: registered. Configure the numeric owner ID after signing in.\n');
+              console.log('Telegram webhook registered.');
+            }
+          })().catch(e => { console.error(e.message); process.exit(1); });
+          NODE
+
+      - name: Remove temporary secret file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kayro-runtime-secrets.json"
