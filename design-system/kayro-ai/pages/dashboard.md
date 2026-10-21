@@ -1,0 +1,2 @@
+# Dashboard deviations
+Use four compact status metrics, two-column quick-start/recent-chat panels, and a low-emphasis security callout. Do not fabricate task counts, connected services, or model availability.
