@@ -85,7 +85,7 @@ describe("AI credential encryption", () => {
 
     const ciphertext = await encryptSecret(testEnv(), credential);
     const parts = ciphertext.split(".");
-    parts[2] = `${parts[2].slice(0, -1)}${parts[2].endsWith("A") ? "B" : "A"}`;
+    parts[2] = `${parts[2].startsWith("A") ? "B" : "A"}${parts[2].slice(1)}`;
     await expect(decryptSecret(testEnv(), parts.join("."))).rejects.toThrow(
       "بازکردن امن اعتبارنامه",
     );
