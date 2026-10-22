@@ -51,12 +51,12 @@ function anonymousSession(req:Request):AnonymousSession{
 function withAnonymousCookie(res:Response,session:AnonymousSession):Response{
  if(!session.fresh)return res;
  const headers=new Headers(res.headers);
- headers.append('Set-Cookie',\`kayro_sid=\${session.id}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax\`);
+ headers.append('Set-Cookie',`kayro_sid=${session.id}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`);
  headers.set('Cache-Control','no-store');
  return new Response(res.body,{status:res.status,statusText:res.statusText,headers});
 }
 async function handlePublicChat(req:Request,env:Env,session:AnonymousSession):Promise<Response>{
- const url=new URL(req.url),origin=req.headers.get('Origin')||url.origin,ownerId=\`anon:\${session.id}\`;
+ const url=new URL(req.url),origin=req.headers.get('Origin')||url.origin,ownerId=`anon:${session.id}`;
  let response:Response;
  try{
   await ensure(env.DB);
@@ -80,7 +80,7 @@ async function handlePublicChat(req:Request,env:Env,session:AnonymousSession):Pr
     }else if(req.method==='POST'){
      const body:any=await req.json();
      if(typeof body.content!=='string'||!body.content.trim()||body.content.length>20000){response=fail('پیام باید بین ۱ تا ۲۰٬۰۰۰ نویسه باشد.',422,origin);}
-     else if(await rateLimited(env.DB,\`chat:\${session.id}\`,12)){response=fail('تعداد پیام‌ها در این دقیقه زیاد است؛ کمی بعد دوباره تلاش کنید.',429,origin);}
+     else if(await rateLimited(env.DB,`chat:${session.id}`,12)||await rateLimited(env.DB,'public-chat-global',60)){response=fail('تعداد پیام‌ها در این دقیقه زیاد است؛ کمی بعد دوباره تلاش کنید.',429,origin);}
      else{
       const stamp=now(),text=body.content.trim();
       await env.DB.prepare("INSERT INTO messages(id,conversation_id,role,content,source,created_at) VALUES(?,?,?,?,?,?)").bind(uuid(),cid,'user',text,'web',stamp).run();
