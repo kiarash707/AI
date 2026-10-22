@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyTask, isZeroCostPricing, taskSuitable, zeroPrice } from './index';
+import { anonymousSession, classifyTask, isZeroCostPricing, taskSuitable, withAnonymousCookie, zeroPrice } from './index';
 
 const model = (
   id: string,
@@ -48,5 +48,40 @@ describe('task routing', () => {
     expect(taskSuitable([general, coder, image], 'coding')[0]?.id).toBe('coder');
     expect(taskSuitable([general, coder, image], 'conversation').every((m) => m.modalities.includes('text'))).toBe(true);
     expect(taskSuitable([general, image], 'image').map((m) => m.id)).toEqual(['image']);
+  });
+});
+
+describe('public no-login browser sessions', () => {
+  it('creates a high-entropy anonymous session when no cookie is present', () => {
+    const s = anonymousSession(new Request('https://kayro-ai.pages.dev/api/conversations'));
+    expect(s.fresh).toBe(true);
+    expect(s.id).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('reuses a valid anonymous cookie without creating a new identity', () => {
+    const id = 'ab'.repeat(32);
+    const s = anonymousSession(new Request('https://kayro-ai.pages.dev/api/conversations', {
+      headers: { Cookie: `theme=dark; kayro_sid=${id}` },
+    }));
+    expect(s).toEqual({ id, fresh: false });
+  });
+
+  it('replaces malformed session cookies instead of trusting them', () => {
+    const s = anonymousSession(new Request('https://kayro-ai.pages.dev/api/conversations', {
+      headers: { Cookie: 'kayro_sid=not-a-valid-session' },
+    }));
+    expect(s.fresh).toBe(true);
+    expect(s.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(s.id).not.toBe('not-a-valid-session');
+  });
+
+  it('sets an HttpOnly secure cookie for a fresh session only', () => {
+    const fresh = { id: 'cd'.repeat(32), fresh: true };
+    const withCookie = withAnonymousCookie(new Response('ok'), fresh);
+    expect(withCookie.headers.get('set-cookie')).toContain('HttpOnly');
+    expect(withCookie.headers.get('set-cookie')).toContain('Secure');
+    expect(withCookie.headers.get('set-cookie')).toContain('SameSite=Lax');
+    const reused = withAnonymousCookie(new Response('ok'), { id: fresh.id, fresh: false });
+    expect(reused.headers.get('set-cookie')).toBeNull();
   });
 });
