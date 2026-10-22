@@ -40,3 +40,19 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Bundle Worker and static assets for direct deployment
+        run: |
+          mkdir -p deployment
+          cp -R dist/. deployment/
+          ./node_modules/.bin/esbuild worker/index.ts --bundle --platform=browser --target=es2022 --format=esm --outfile=deployment/worker.js
+          test -s deployment/index.html
+          test -s deployment/worker.js
+
+      - name: Upload deployable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: kayro-ai-deploy-${{ github.sha }}
+          path: deployment/
+          if-no-files-found: error
+          retention-days: 3
