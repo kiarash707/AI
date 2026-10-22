@@ -1,58 +1,90 @@
 # KAYRO AI
 
-Persian-first AI workspace built with React, TypeScript, Vite, Cloudflare Pages Functions, and D1.
+فضای کاری هوش مصنوعی فارسی‌محور مبتنی بر React، TypeScript، Vite، Cloudflare Pages Functions/Workers و D1.
 
-## Current behavior
+## وضعیت فعلی
 
-- The main site and chat are public: **opening the website does not require an account, login, or email code**.
-- Chat history is scoped to a secure, anonymous, HttpOnly browser cookie. It remains available in the same browser; clearing cookies or using another browser starts a separate history.
-- Conversations created in a public browser are isolated from the Telegram owner's private conversations.
-- Owner-only endpoints for OpenRouter and Telegram settings are protected by Cloudflare Access on the API paths only. The root page and public chat endpoints are not behind Access.
-- Provider keys are encrypted with AES-GCM in D1 and are never returned to the frontend.
-- Only OpenRouter models with explicit zero input and output prices are eligible. A free model may still be unavailable or rate-limited.
+- سایت و چت عمومی هستند؛ برای بازکردن سایت یا استفاده از چت عادی، ورود لازم نیست.
+- تاریخچهٔ چت عمومی به کوکی ناشناس HttpOnly محدود است و از گفتگوهای خصوصی مالک جداست.
+- مسیرهای تنظیمات حساس مالک با بررسی JWT مربوط به Cloudflare Access محافظت می‌شوند.
+- کلید ارائه‌دهنده در D1 با AES-GCM رمز می‌شود و به فرانت‌اند برگردانده نمی‌شود.
+- فقط مدل‌هایی که قیمت ورودی و خروجی آن‌ها از API ارائه‌دهنده صریحاً صفر گزارش شده است، در انتخاب رایگان قرار می‌گیرند. رایگان بودن به معنی تضمین ظرفیت یا دسترس‌پذیری نیست.
+- سرویس حساب شخصی Telegram MTProto در پوشهٔ telegram-user-service/ مستقل از Telegram Bot API قرار دارد و تا زمان تنظیم Secretها، volume پایدار و تست ورود واقعی، نباید اتصال آن را عملیاتی فرض کرد.
+- افزونهٔ مرورگر و بخشی از قابلیت‌های گستردهٔ مدیریت وظایف هنوز کامل نیستند؛ بخش ناقص را قابلیت نهایی تلقی نکنید.
 
-## Continuous integration
+## بررسی کیفیت و تست‌ها
 
-GitHub Actions on pushes and pull requests runs:
-- TypeScript checks for the frontend, Worker, and Pages Functions.
-- Unit tests for zero-price model filtering, task routing, and anonymous-session cookies.
-- Production build and a deployable bundle artifact.
+GitHub Actions با نام **KAYRO AI CI** در push به main، Pull Request و اجرای دستی این مراحل را انجام می‌دهد:
 
-See [CI runs](https://github.com/kiarash707/AI/actions).
+1. نصب وابستگی‌های قفل‌شده با npm ci
+2. بررسی TypeScript برای فرانت‌اند، Worker و Pages Functions
+3. اجرای تست‌ها با npm test
+4. build تولید با npm run build
+5. ساخت artifact قابل انتشار شامل فایل‌های استاتیک و _worker.js
 
-## Cloudflare Pages deployment
+اجرای CI را در [GitHub Actions](https://github.com/kiarash707/AI/actions) بررسی کنید.
 
-The Cloudflare Pages project `kayro-ai` has been created, its dedicated D1 database is connected, and its production variables are configured. A production deployment has **not** yet been published.
+## استقرار Cloudflare Pages
 
-### Automatic deployment (recommended)
+پروژهٔ Cloudflare Pages با نام kayro-ai و دامنهٔ https://kayro-ai.pages.dev در حساب Cloudflare ثبت شده است. دیتابیس D1 با نام kayro-ai نیز در تنظیمات Production پروژه ثبت شده است.
 
-Add these GitHub repository secrets under **Settings → Secrets and variables → Actions**:
+Workflow موجود در [.github/workflows/deploy.yml](.github/workflows/deploy.yml) پس از موفقیت CI روی main، artifact همان commit را به Cloudflare Pages منتشر می‌کند. همچنین از مسیر **Actions → Deploy KAYRO AI to Cloudflare Pages → Run workflow** می‌توان استقرار دستی را اجرا کرد.
 
-1. `CLOUDFLARE_API_TOKEN`: a Cloudflare API token scoped to this account with **Cloudflare Pages: Edit**. Do not use a Global API Key and never paste the token into chat.
-2. `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in Cloudflare Dashboard. For the currently connected account, it is `d800fbf453d1edd2f9172a5a172e7792`.
+برای فعال‌شدن انتشار خودکار، این دو مقدار را در **GitHub → Settings → Secrets and variables → Actions** به‌عنوان Repository secrets تنظیم کنید:
 
-After they are saved, run **Actions → Deploy KAYRO AI to Cloudflare Pages → Run workflow**, using branch `main`. Future pushes deploy automatically. If the secrets are not set, the deploy job is skipped with a notice while CI still runs.
+- CLOUDFLARE_API_TOKEN: توکن محدودشده به مجوز Cloudflare Pages: Edit در حساب درست؛ از Global API Key استفاده نکنید.
+- CLOUDFLARE_ACCOUNT_ID: شناسهٔ حساب Cloudflare که پروژهٔ kayro-ai در آن قرار دارد.
 
-### One-time manual deployment
+شناسهٔ حساب را از Cloudflare Dashboard بردارید. مقدار Secretها را در کد، issue، log یا چت قرار ندهید. اگر Secretها تنظیم نشده باشند، مرحلهٔ deploy باید با خطای روشن متوقف شود؛ سبزشدن CI به معنی انتشار نیست.
 
-The latest successful `KAYRO AI CI` run uploads a `kayro-ai-deploy-<commit>` artifact ZIP. Download it from the run's **Artifacts** section, then in Cloudflare Dashboard open **Workers & Pages → Pages → kayro-ai → Create a new deployment → Production** and upload that ZIP. Do not extract or edit the ZIP before upload. The bundle contains the static site and the Pages `_worker.js` API handler.
+روش اتصال مستقیم Git به پروژهٔ Pages از طریق API در حال حاضر با خطای احراز اتصال Git در Cloudflare رد شد. Workflow بالا از artifact تأییدشدهٔ GitHub برای Direct Upload استفاده می‌کند؛ این مسیر تا زمانی که Cloudflare Git integration دوباره مجاز نشود، روش استقرار خودکار تعریف‌شده است.
 
-Once deployment completes, test:
-- Public site: `https://kayro-ai.pages.dev`
-- Health: `https://kayro-ai.pages.dev/api/health`
-- The health endpoint should return `ok: true` and `database: "ok"`.
+### پس از انتشار بررسی کنید
 
-## Owner settings and AI setup
+- سایت: [https://kayro-ai.pages.dev](https://kayro-ai.pages.dev)
+- سلامت API و D1: [https://kayro-ai.pages.dev/api/health](https://kayro-ai.pages.dev/api/health)
+- وضعیت deployment و logها: [Cloudflare Dashboard → Workers & Pages → kayro-ai](https://dash.cloudflare.com/)
 
-Opening the public site does not require login. Only the sensitive API settings routes (`/api/ai/*` and `/api/settings*`) require the owner email code through Cloudflare Access. On the AI settings page, use **بازکردن درگاه امن تنظیمات**, complete the owner check in the new tab, then return to the site and refresh the page.
+Health endpoint باید ok: true و database: "ok" برگرداند. این نتیجه باید بعد از deployment واقعی بررسی شود.
 
-After deployment:
-1. Open **هوش مصنوعی و API**.
-2. Enter a fresh OpenRouter API key, test it, and save it. Never commit a provider key to GitHub.
-3. The site will then show available zero-priced models. No paid-model fallback is used.
+## تنظیم هوش مصنوعی
 
-The encryption secret and Access configuration are stored in the Cloudflare Pages project's production settings, not in frontend code. Telegram is not production-ready until its bot token, webhook secret, and owner numeric ID are configured separately.
+1. سایت را باز کنید و به بخش «هوش مصنوعی و API» بروید.
+2. از گزینهٔ «بازکردن درگاه امن تنظیمات» وارد Cloudflare Access شوید.
+3. یک کلید OpenRouter را فقط در فرم امن سایت وارد کنید، اتصال را آزمایش کنید و ذخیره کنید.
+4. فهرست مدل‌ها باید فقط مدل‌هایی با قیمت ورودی و خروجی صفر را نمایش دهد.
 
-## Known limitations
+Secret رمزنگاری سمت سرور با نام AI_CREDENTIALS_ENCRYPTION_KEY باید در تنظیمات Production Cloudflare به‌صورت Secret تنظیم شود و مقدار آن Base64 از ۳۲ بایت تصادفی باشد. اگر این Secret خالی یا نامعتبر باشد، ذخیره و بازیابی امن کلید هوش مصنوعی کار نخواهد کرد.
 
-The Chrome extension is still a scaffold; secure pairing and browser action execution are not complete. The app also does not yet provide general user accounts/invites, complete task orchestration, all third-party integrations, file uploads, or guaranteed model availability. Passing CI validates type checks, tests, and build output; it does not substitute for the post-deployment health and chat tests above.
+## اتصال حساب شخصی تلگرام (MTProto)
+
+این قابلیت با Telegram Bot API یکی نیست. سرویس خصوصی در telegram-user-service/ از Telethon استفاده می‌کند و باید روی میزبان پایدار با volume خصوصی اجرا شود. حداقل متغیرهای آن:
+
+- TELEGRAM_API_ID
+- TELEGRAM_API_HASH
+- KAYRO_BRIDGE_SECRET (حداقل ۳۲ نویسهٔ تصادفی)
+- TELEGRAM_SESSION_DIR (پوشه‌ای روی volume پایدار، معمولاً /data)
+
+در Cloudflare Pages نیز متغیرهای TELEGRAM_USER_SERVICE_URL و TELEGRAM_USER_SERVICE_SECRET باید به‌صورت امن تنظیم شوند و Secret پل باید با KAYRO_BRIDGE_SECRET یکسان باشد. از HTTPS استفاده کنید. کد ورود، رمز دومرحله‌ای و فایل session را در Git یا log قرار ندهید.
+
+تا وقتی این متغیرها و volume تنظیم نشده‌اند و ورود واقعی حساب، فهرست گفتگوها، تاریخچه و ارسال پیام با تأیید مالک آزمایش نشده است، اتصال تلگرام را عملیاتی تلقی نکنید.
+
+## توسعهٔ محلی
+
+```bash
+npm ci
+npm run check
+npm test
+npm run build
+npm run dev
+```
+
+برای اجرای API محلی با D1 به پیکربندی Wrangler و bindingهای محلی مناسب نیاز است. DEV_MODE=true فقط برای محیط توسعهٔ محلی است و نباید در Production تنظیم شود.
+
+## امنیت و محدودیت‌ها
+
+- هرگز Secret واقعی را در GitHub commit نکنید.
+- احراز هویت مالک باید در بک‌اند هم بررسی شود؛ مخفی‌کردن کنترل‌ها در رابط کاربری کافی نیست.
+- D1، تنظیمات Access و Secretها را بدون بررسی وابستگی‌ها حذف یا جایگزین نکنید.
+- CI نوع‌دهی، تست‌ها و build را بررسی می‌کند؛ تست بیرونی health، چت و اتصال واقعی تلگرام پس از استقرار همچنان لازم است.
+- مدل رایگان ممکن است محدودیت نرخ، قطعی یا کمبود ظرفیت داشته باشد؛ برنامه نباید بدون اطلاع مالک به مدل پولی fallback کند.
