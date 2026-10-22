@@ -46,9 +46,9 @@ jobs:
           mkdir -p deployment
           cp -R dist/. deployment/
           npx tsc -p tsconfig.worker.json --noEmit false --rootDir worker --outDir deployment
-          mv deployment/index.js deployment/worker.js
+          mv deployment/index.js deployment/_worker.js
           test -s deployment/index.html
-          test -s deployment/worker.js
+          test -s deployment/_worker.js
 
       - name: Upload deployable bundle
         uses: actions/upload-artifact@v4
