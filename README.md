@@ -1,50 +1,58 @@
 # KAYRO AI
 
-Persian-first AI agent workspace (React + TypeScript + Vite; Cloudflare Worker + D1). This is an early implementation; passing CI does not mean every planned agent/integration feature is shipped.
+Persian-first AI workspace built with React, TypeScript, Vite, Cloudflare Pages Functions, and D1.
 
-## Current implementation
-- Responsive Persian RTL workspace, dashboard, chat interface, settings, and model views.
-- D1-backed conversation/message endpoints and OpenRouter model discovery. A model is accepted as free only when both input and output prices are explicitly zero.
-- Telegram webhook handler with secret-header verification, update de-duplication, `/new`, `/chats`, and shared conversation IDs.
-- Chrome Manifest V3 scaffold. Secure pairing and browser-action execution are not implemented yet.
-- Design system in `design-system/kayro-ai/MASTER.md`.
+## Current behavior
+
+- The main site and chat are public: **opening the website does not require an account, login, or email code**.
+- Chat history is scoped to a secure, anonymous, HttpOnly browser cookie. It remains available in the same browser; clearing cookies or using another browser starts a separate history.
+- Conversations created in a public browser are isolated from the Telegram owner's private conversations.
+- Owner-only endpoints for OpenRouter and Telegram settings are protected by Cloudflare Access on the API paths only. The root page and public chat endpoints are not behind Access.
+- Provider keys are encrypted with AES-GCM in D1 and are never returned to the frontend.
+- Only OpenRouter models with explicit zero input and output prices are eligible. A free model may still be unavailable or rate-limited.
 
 ## Continuous integration
-GitHub Actions runs on pushes and pull requests to `main`. It runs frontend TypeScript, Worker TypeScript, unit tests, and a Vite production build. The tests cover strict zero-price filtering and Persian task routing. See [CI runs](https://github.com/kiarash707/AI/actions).
 
-## Deploy to Cloudflare
-The deployment workflow is [deploy-cloudflare.yml](.github/workflows/deploy-cloudflare.yml). It automatically finds or creates the `kayro-ai` D1 database, supplies its real ID to Wrangler only inside the GitHub runner, applies remote migrations, builds, deploys the Worker + static assets, and runs a health smoke-test. The ID and secret values are never committed to the repository.
+GitHub Actions on pushes and pull requests runs:
+- TypeScript checks for the frontend, Worker, and Pages Functions.
+- Unit tests for zero-price model filtering, task routing, and anonymous-session cookies.
+- Production build and a deployable bundle artifact.
 
-### One-time GitHub setup
-In GitHub, open **Settings → Secrets and variables → Actions → New repository secret** and add:
+See [CI runs](https://github.com/kiarash707/AI/actions).
 
-1. `CLOUDFLARE_API_TOKEN` — create an account API token with Workers Scripts **Admin** permission for initial Worker creation and D1 **Edit/Write** permission for database creation and migrations. Do not use your Global API Key.
-2. `CLOUDFLARE_ACCOUNT_ID` — the account ID shown on the Cloudflare Dashboard overview page.
+## Cloudflare Pages deployment
 
-Then open **Actions → Deploy KAYRO AI to Cloudflare Workers → Run workflow** and select `main`. Future pushes to `main` deploy automatically. View the result and website URL in that workflow's summary.
+The Cloudflare Pages project `kayro-ai` has been created, its dedicated D1 database is connected, and its production variables are configured. A production deployment has **not** yet been published.
 
-Optional secrets (add in the same GitHub screen):
-- `AI_CREDENTIALS_ENCRYPTION_KEY` — a persistent Base64 encoding of 32 random bytes; required before saving a provider key in AI settings. Keep a secure backup and do not rotate it after credentials have been stored unless you intend to re-encrypt them.
-- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` — if both are configured, the workflow uploads them as Worker secrets and registers the Telegram webhook.
+### Automatic deployment (recommended)
 
-If the workflow fails with a permissions error, update the API token with the missing account-level permission; do not paste the token into chat or commit it to GitHub. The Cloudflare connector was not available to the deployment process, so the first real deployment still needs these GitHub secrets.
+Add these GitHub repository secrets under **Settings → Secrets and variables → Actions**:
 
-### Secure the deployed Worker before using the API
-The app intentionally fails closed until Cloudflare Access is enabled and owner identity is configured:
+1. `CLOUDFLARE_API_TOKEN`: a Cloudflare API token scoped to this account with **Cloudflare Pages: Edit**. Do not use a Global API Key and never paste the token into chat.
+2. `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in Cloudflare Dashboard. For the currently connected account, it is `d800fbf453d1edd2f9172a5a172e7792`.
 
-1. In Cloudflare, open **Workers & Pages → kayro-ai → Settings → Domains & Routes** and enable **Cloudflare Access** for the Worker. Allow only your verified sign-in email. Protect production traffic, not just previews.
-2. Open the Worker's **Settings → Variables and Secrets** and add these plain-text Worker variables:
-   - `ACCESS_TEAM_DOMAIN`: your Cloudflare Zero Trust team domain, such as `team-name.cloudflareaccess.com` (no path).
-   - `ACCESS_AUD`: the Access application's Audience (AUD) tag.
-   - `KAYRO_OWNER_EMAIL`: the exact email authorized to administer this KAYRO workspace.
-3. Set `AI_CREDENTIALS_ENCRYPTION_KEY` as a Worker Secret if you did not add it as a GitHub Actions secret. It must decode to exactly 32 bytes. This is separate from the OpenRouter key.
-4. After Access and encryption are configured, open the deployed website, enter your OpenRouter API key in **هوش مصنوعی و API**, test the connection, and save. The key is AES-GCM encrypted in D1; the browser receives only a masked value.
-5. For Telegram, enter your numeric owner ID in the settings page. The owner ID is not an authentication mechanism by itself; the Worker still requires valid Cloudflare Access for its settings APIs.
+After they are saved, run **Actions → Deploy KAYRO AI to Cloudflare Pages → Run workflow**, using branch `main`. Future pushes deploy automatically. If the secrets are not set, the deploy job is skipped with a notice while CI still runs.
 
-The workflow uses `wrangler deploy --keep-vars`, so Worker variables set in the dashboard are preserved on subsequent releases. Same-origin requests are allowed; cross-origin requests require the explicit `ALLOWED_ORIGIN` allowlist. Do not set `DEV_MODE=true` in production.
+### One-time manual deployment
 
-## Local development
-`npm ci && npm run dev` starts the Vite UI. API calls require a local/deployed Worker at `/api`. For local-only Worker smoke tests, create an ignored `.dev.vars` containing a random Base64 32-byte `AI_CREDENTIALS_ENCRYPTION_KEY`, then run `npx wrangler dev --env dev --var DEV_MODE:true`. Never deploy with the local bypass.
+The latest successful `KAYRO AI CI` run uploads a `kayro-ai-deploy-<commit>` artifact ZIP. Download it from the run's **Artifacts** section, then in Cloudflare Dashboard open **Workers & Pages → Pages → kayro-ai → Create a new deployment → Production** and upload that ZIP. Do not extract or edit the ZIP before upload. The bundle contains the static site and the Pages `_worker.js` API handler.
+
+Once deployment completes, test:
+- Public site: `https://kayro-ai.pages.dev`
+- Health: `https://kayro-ai.pages.dev/api/health`
+- The health endpoint should return `ok: true` and `database: "ok"`.
+
+## Owner settings and AI setup
+
+Opening the public site does not require login. Only the sensitive API settings routes (`/api/ai/*` and `/api/settings*`) require the owner email code through Cloudflare Access. On the AI settings page, use **بازکردن درگاه امن تنظیمات**, complete the owner check in the new tab, then return to the site and refresh the page.
+
+After deployment:
+1. Open **هوش مصنوعی و API**.
+2. Enter a fresh OpenRouter API key, test it, and save it. Never commit a provider key to GitHub.
+3. The site will then show available zero-priced models. No paid-model fallback is used.
+
+The encryption secret and Access configuration are stored in the Cloudflare Pages project's production settings, not in frontend code. Telegram is not production-ready until its bot token, webhook secret, and owner numeric ID are configured separately.
 
 ## Known limitations
-This version does not yet implement general user accounts/invites/role sharing, task orchestration, audit/approval workflow, full Telegram owner-verification lifecycle, encrypted third-party connections, Chrome pairing/action execution, streaming responses, or file uploads. A successful CI run confirms type checks, unit tests, and frontend build only; it does not confirm a live OpenRouter response or prove that all planned features are implemented.
+
+The Chrome extension is still a scaffold; secure pairing and browser action execution are not complete. The app also does not yet provide general user accounts/invites, complete task orchestration, all third-party integrations, file uploads, or guaranteed model availability. Passing CI validates type checks, tests, and build output; it does not substitute for the post-deployment health and chat tests above.
