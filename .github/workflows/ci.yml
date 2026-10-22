@@ -45,7 +45,8 @@ jobs:
         run: |
           mkdir -p deployment
           cp -R dist/. deployment/
-          ./node_modules/.bin/esbuild worker/index.ts --bundle --platform=browser --target=es2022 --format=esm --outfile=deployment/worker.js
+          npx tsc -p tsconfig.worker.json --noEmit false --outDir deployment
+          mv deployment/index.js deployment/worker.js
           test -s deployment/index.html
           test -s deployment/worker.js
 
