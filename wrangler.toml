@@ -11,20 +11,20 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kayro-ai"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "750e59ee-6653-424d-bbde-2df4455de362"
 migrations_dir = "migrations"
 
 [vars]
-ALLOWED_ORIGIN = ""
+ALLOWED_ORIGIN = "https://kayro-ai.k66qrjse-6wv1j8.workers.dev"
 
 # Local-only development bypass. Never configure DEV_MODE in the production environment.
 [env.dev.vars]
-ALLOWED_ORIGIN = ""
+ALLOWED_ORIGIN = "http://localhost:5173"
 
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "kayro-ai"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "750e59ee-6653-424d-bbde-2df4455de362"
 migrations_dir = "migrations"
 
 [triggers]
