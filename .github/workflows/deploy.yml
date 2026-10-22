@@ -1,0 +1,77 @@
+name: Deploy KAYRO AI to Cloudflare Pages
+
+on:
+  workflow_run:
+    workflows: ["KAYRO AI CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: kayro-ai-pages-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy verified main build
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Add CLOUDFLARE_API_TOKEN in repository Actions secrets."; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Add CLOUDFLARE_ACCOUNT_ID in repository Actions secrets."; exit 1; }
+
+      - name: Download artifact from successful CI run
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: kayro-ai-deploy-${{ github.event.workflow_run.head_sha }}
+          path: deployment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository for manual deployment
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build verified deployment bundle for manual run
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+          mkdir -p deployment
+          cp -R dist/. deployment/
+          npx tsc -p tsconfig.worker.json --noEmit false --rootDir worker --outDir deployment
+          mv deployment/index.js deployment/_worker.js
+          test -s deployment/index.html
+          test -s deployment/_worker.js
+
+      - name: Deploy to Cloudflare Pages production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4"
+          command: pages deploy deployment --project-name kayro-ai --branch main
