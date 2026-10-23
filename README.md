@@ -26,7 +26,7 @@ GitHub Actions با نام **KAYRO AI CI** در push به main، Pull Request و
 
 ## استقرار Cloudflare Pages
 
-پروژهٔ Cloudflare Pages با نام kayro-ai و دامنهٔ https://kayro-ai.pages.dev در حساب Cloudflare ثبت شده است. اتصال D1 با نام DB و شناسهٔ kayro-ai در تنظیمات Production و Preview ثبت شده است. Access نیز برای کل hostname و ایمیل مالک تنظیم شده؛ بعد از اولین deployment حتماً ورود و API را از مرورگر ناشناس آزمایش کنید.
+پروژهٔ Cloudflare Pages با نام kayro-ai و دامنهٔ https://kayro-ai.pages.dev در حساب Cloudflare ثبت شده است. اتصال D1 با نام DB و شناسهٔ kayro-ai در تنظیمات Production و Preview ثبت شده است. احراز هویت TOTP در Worker انجام می‌شود؛ پس از deployment، راه‌اندازی QR و رد شدن درخواست‌های API بدون نشست را در مرورگر ناشناس آزمایش کنید.
 
 Workflow موجود در [.github/workflows/deploy.yml](.github/workflows/deploy.yml) پس از موفقیت CI روی main، artifact همان commit را به Cloudflare Pages منتشر می‌کند. همچنین از مسیر **Actions → Deploy KAYRO AI to Cloudflare Pages → Run workflow** می‌توان استقرار دستی را اجرا کرد.
 
@@ -100,6 +100,6 @@ npm run dev
 
 - هرگز Secret واقعی را در GitHub commit نکنید.
 - احراز هویت مالک باید در بک‌اند هم بررسی شود؛ مخفی‌کردن کنترل‌ها در رابط کاربری کافی نیست.
-- D1، تنظیمات Access و Secretها را بدون بررسی وابستگی‌ها حذف یا جایگزین نکنید.
+- D1 و Secretهای احراز هویت و رمزگذاری را بدون برنامهٔ بازیابی حذف یا جایگزین نکنید.
 - CI نوع‌دهی، تست‌ها و build را بررسی می‌کند؛ تست بیرونی health، چت و اتصال واقعی تلگرام پس از استقرار همچنان لازم است.
 - مدل رایگان ممکن است محدودیت نرخ، قطعی یا کمبود ظرفیت داشته باشد؛ برنامه نباید بدون اطلاع مالک به مدل پولی fallback کند.
