@@ -39,7 +39,7 @@ function AuthGate(){const locale=useLocale();
   setBusy(true);
   try{await fetch(API+'/auth/logout',{method:'POST'});}finally{setStatus(s=>({...s,authenticated:false}));setStage('login');setCode('');setBusy(false)}
  }
- if(stage==='app')return <Localized><><App/><button className="auth-logout" onClick={logout} disabled={busy} title="خروج امن از حساب"><Shield size={15}/> خروج امن</button></Localized>;
+ if(stage==='app')return <Localized><><App/><button className="auth-logout" onClick={logout} disabled={busy} title="خروج امن از حساب"><Shield size={15}/> خروج امن</button></></Localized>;
  return <Localized><main className="auth-screen" dir="rtl" lang={locale}>
   <div className="auth-lang-control"><LanguageToggle/></div><section className="auth-card">
    <div className="auth-mark"><Shield size={26}/></div>
