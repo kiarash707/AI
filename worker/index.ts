@@ -29,7 +29,16 @@ async function ensure(db:D1Database){await db.batch([
  db.prepare('CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL)'),
  db.prepare('CREATE TABLE IF NOT EXISTS model_events (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, requested_model TEXT, used_model TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL)'),
  db.prepare('CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, created_at TEXT NOT NULL)'),
- db.prepare('CREATE INDEX IF NOT EXISTS auth_sessions_expires ON auth_sessions(expires_at)')]);}
+ db.prepare('CREATE INDEX IF NOT EXISTS auth_sessions_expires ON auth_sessions(expires_at)'),
+ db.prepare('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', status TEXT NOT NULL DEFAULT \'active\', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)'),
+ db.prepare('CREATE INDEX IF NOT EXISTS projects_owner_updated ON projects(owner_id,updated_at)'),
+ db.prepare('CREATE TABLE IF NOT EXISTS workspace_tasks (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, project_id TEXT, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', status TEXT NOT NULL DEFAULT \'todo\', priority TEXT NOT NULL DEFAULT \'normal\', due_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)'),
+ db.prepare('CREATE INDEX IF NOT EXISTS workspace_tasks_owner_updated ON workspace_tasks(owner_id,updated_at)'),
+ db.prepare('CREATE INDEX IF NOT EXISTS workspace_tasks_project ON workspace_tasks(project_id)'),
+ db.prepare('CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)'),
+ db.prepare('CREATE INDEX IF NOT EXISTS memories_owner_updated ON memories(owner_id,updated_at)'),
+ db.prepare('CREATE TABLE IF NOT EXISTS activity_log (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, category TEXT NOT NULL, action TEXT NOT NULL, summary TEXT NOT NULL, created_at TEXT NOT NULL)'),
+ db.prepare('CREATE INDEX IF NOT EXISTS activity_log_owner_created ON activity_log(owner_id,created_at)')]);}
 async function rateLimited(db:D1Database,key:string,limit=6){const t=Math.floor(Date.now()/60000),row:any=await db.prepare('SELECT window_start,count FROM rate_limits WHERE key=?').bind(key).first();if(row&&row.window_start===t&&row.count>=limit)return true;await db.prepare('INSERT INTO rate_limits(key,window_start,count) VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET window_start=excluded.window_start,count=CASE WHEN rate_limits.window_start=excluded.window_start THEN rate_limits.count+1 ELSE 1 END').bind(key,t).run();return false;}
 async function setting(db:D1Database,key:string){const r:any=await db.prepare('SELECT value FROM settings WHERE key=?').bind(key).first();return typeof r?.value==='string'?r.value:null;}
 function fromB64(s:string):Uint8Array<ArrayBuffer>{const clean=s.replace(/-/g,'+').replace(/_/g,'/');const binary=atob(clean.padEnd(Math.ceil(clean.length/4)*4,'='));const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
@@ -148,9 +157,8 @@ async function authRoute(req:Request,env:Env,origin:string,url:URL):Promise<Resp
   const stored=await setting(env.DB,'owner_totp_secret');if(!stored)return fail('Authenticator تنظیم نشده است.',409,origin);
   let secret:string;try{secret=await decryptOwnerSecret(env,stored)}catch{return fail('کلید رمزگذاری احراز هویت سرور تنظیم یا معتبر نیست.',503,origin)}
   const counter=await matchTotpCounter(secret,String(body.code||''));if(counter===null)return fail('کد Authenticator نادرست یا منقضی شده است.',401,origin);
-  const last=Number(await setting(env.DB,'owner_totp_last_counter')||'-1');
-  if(counter<=last)return fail('این کد قبلاً استفاده شده است؛ کد تازه‌ای از Authenticator وارد کنید.',401,origin);
-  await env.DB.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)').bind('owner_totp_last_counter',String(counter),now()).run();
+  const freshCounter=await env.DB.prepare("UPDATE settings SET value=?,updated_at=? WHERE key='owner_totp_last_counter' AND CAST(value AS INTEGER) < ?").bind(String(counter),now(),counter).run();
+  if(Number(freshCounter.meta?.changes||0)!==1)return fail('این کد قبلاً استفاده شده است؛ کد تازه‌ای از Authenticator وارد کنید.',401,origin);
   return issueOwnerSession(env,origin);
  }
  if(url.pathname==='/api/auth/logout'&&req.method==='POST'){
@@ -280,6 +288,114 @@ async function handleTelegramAccount(req:Request,env:Env,origin:string):Promise<
  }
 }
 
+
+type WorkspaceProject={id:string;title:string;description:string;status:'active'|'planning'|'paused'|'done'};
+type WorkspaceTask={id:string;title:string;description:string;status:'todo'|'in_progress'|'done';priority:'low'|'normal'|'high';project_id:string|null;due_date:string|null};
+async function recordActivity(db:D1Database,category:string,action:string,summary:string){
+ await db.prepare('INSERT INTO activity_log(id,owner_id,category,action,summary,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),'owner',category.slice(0,40),action.slice(0,60),summary.slice(0,240),now()).run();
+ await db.prepare('DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log WHERE owner_id=? ORDER BY created_at DESC LIMIT 200)').bind('owner').run();
+}
+function boundedText(v:unknown,max:number,optional=false):string|null{
+ if(typeof v!=='string')return optional?'':null;
+ const s=v.trim();if(!optional&&!s)return null;if(s.length>max)return null;return s;
+}
+function statusProject(v:unknown):'active'|'planning'|'paused'|'done'|null{return v==='active'||v==='planning'||v==='paused'||v==='done'?v:null}
+function statusTask(v:unknown):'todo'|'in_progress'|'done'|null{return v==='todo'||v==='in_progress'||v==='done'?v:null}
+function priorityTask(v:unknown):'low'|'normal'|'high'|null{return v==='low'||v==='normal'||v==='high'?v:null}
+async function parseJsonBody(req:Request):Promise<any>{try{return await req.json()}catch{return null}}
+async function handleWorkspaceRoute(req:Request,env:Env,origin:string,url:URL):Promise<Response|null>{
+ const path=url.pathname,db=env.DB,stamp=now();
+ if(path==='/api/workspace/integrations'&&req.method==='GET'){
+  return json({openrouter:{configured:Boolean(await setting(db,'ai_openrouter_encrypted')),tested:Boolean(await setting(db,'ai_last_tested_at'))},telegramBot:{tokenConfigured:Boolean(env.TELEGRAM_BOT_TOKEN),ownerConfigured:Boolean(await setting(db,'owner_telegram_user_id'))},telegramAccount:{serviceConfigured:Boolean(env.TELEGRAM_USER_SERVICE_URL&&env.TELEGRAM_USER_SERVICE_SECRET)},browserExtension:{available:true}},200,origin);
+ }
+ if(path==='/api/workspace/projects'){
+  if(req.method==='GET'){const rows=await db.prepare('SELECT p.*, (SELECT COUNT(*) FROM workspace_tasks t WHERE t.project_id=p.id AND t.owner_id=p.owner_id) AS task_count FROM projects p WHERE p.owner_id=? ORDER BY p.updated_at DESC LIMIT 200').bind('owner').all();return json(rows.results,200,origin)}
+  if(req.method==='POST'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const title=boundedText(b.title,120),description=boundedText(b.description,2000,true),status=statusProject(b.status||'active');
+   if(!title||description===null||!status)return fail('عنوان، توضیح یا وضعیت پروژه معتبر نیست.',422,origin);
+   const id=uuid();await db.prepare('INSERT INTO projects(id,owner_id,title,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').bind(id,'owner',title,description,status,stamp,stamp).run();
+   await recordActivity(db,'پروژه','ایجاد','پروژهٔ «'+title+'» ساخته شد');return json({id,title,description,status,created_at:stamp,updated_at:stamp,task_count:0},201,origin)
+  }
+ }
+ const projectMatch=path.match(/^\/api\/workspace\/projects\/([a-f0-9-]{36})$/i);
+ if(projectMatch){
+  const id=projectMatch[1];
+  if(req.method==='PUT'||req.method==='PATCH'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const current:any=await db.prepare('SELECT * FROM projects WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('پروژه پیدا نشد.',404,origin);
+   const title=b.title===undefined?current.title:boundedText(b.title,120),description=b.description===undefined?current.description:boundedText(b.description,2000,true),status=b.status===undefined?current.status:statusProject(b.status);
+   if(!title||description===null||!status)return fail('عنوان، توضیح یا وضعیت پروژه معتبر نیست.',422,origin);
+   await db.prepare('UPDATE projects SET title=?,description=?,status=?,updated_at=? WHERE id=? AND owner_id=?').bind(title,description,status,stamp,id,'owner').run();
+   await recordActivity(db,'پروژه','ویرایش','پروژهٔ «'+title+'» ویرایش شد');return json({ok:true},200,origin)
+  }
+  if(req.method==='DELETE'){
+   const current:any=await db.prepare('SELECT title FROM projects WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('پروژه پیدا نشد.',404,origin);
+   await db.batch([db.prepare('UPDATE workspace_tasks SET project_id=NULL,updated_at=? WHERE project_id=? AND owner_id=?').bind(stamp,id,'owner'),db.prepare('DELETE FROM projects WHERE id=? AND owner_id=?').bind(id,'owner')]);
+   await recordActivity(db,'پروژه','حذف','پروژهٔ «'+String(current.title).slice(0,120)+'» حذف شد؛ وظایف حفظ شدند');return json({ok:true},200,origin)
+  }
+ }
+ if(path==='/api/workspace/tasks'){
+  if(req.method==='GET'){const rows=await db.prepare('SELECT t.*,p.title AS project_title FROM workspace_tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE t.owner_id=? ORDER BY CASE t.status WHEN \'in_progress\' THEN 0 WHEN \'todo\' THEN 1 ELSE 2 END,t.updated_at DESC LIMIT 300').bind('owner').all();return json(rows.results,200,origin)}
+  if(req.method==='POST'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const title=boundedText(b.title,160),description=boundedText(b.description,3000,true),status=statusTask(b.status||'todo'),priority=priorityTask(b.priority||'normal');
+   const projectId=typeof b.project_id==='string'&&b.project_id?b.project_id:null,dueDate=typeof b.due_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(b.due_date)?b.due_date:null;
+   if(!title||description===null||!status||!priority||(b.due_date&&!dueDate))return fail('عنوان، توضیح، اولویت یا تاریخ وظیفه معتبر نیست.',422,origin);
+   if(projectId&&!await db.prepare('SELECT id FROM projects WHERE id=? AND owner_id=?').bind(projectId,'owner').first())return fail('پروژهٔ انتخاب‌شده وجود ندارد.',422,origin);
+   const id=uuid();await db.prepare('INSERT INTO workspace_tasks(id,owner_id,project_id,title,description,status,priority,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id,'owner',projectId,title,description,status,priority,dueDate,stamp,stamp).run();
+   await recordActivity(db,'وظیفه','ایجاد','وظیفهٔ «'+title+'» ساخته شد');return json({id,title,description,status,priority,project_id:projectId,due_date:dueDate,created_at:stamp,updated_at:stamp},201,origin)
+  }
+ }
+ const taskMatch=path.match(/^\/api\/workspace\/tasks\/([a-f0-9-]{36})$/i);
+ if(taskMatch){
+  const id=taskMatch[1];
+  if(req.method==='PATCH'||req.method==='PUT'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const current:any=await db.prepare('SELECT * FROM workspace_tasks WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('وظیفه پیدا نشد.',404,origin);
+   const title=b.title===undefined?current.title:boundedText(b.title,160),description=b.description===undefined?current.description:boundedText(b.description,3000,true),status=b.status===undefined?current.status:statusTask(b.status),priority=b.priority===undefined?current.priority:priorityTask(b.priority);
+   const projectId=b.project_id===undefined?current.project_id:(typeof b.project_id==='string'&&b.project_id?b.project_id:null),dueDate=b.due_date===undefined?current.due_date:(typeof b.due_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(b.due_date)?b.due_date:null);
+   if(!title||description===null||!status||!priority||(b.due_date!==undefined&&b.due_date!==null&&b.due_date!==''&&!dueDate))return fail('عنوان، توضیح، وضعیت، اولویت یا تاریخ معتبر نیست.',422,origin);
+   if(projectId&&!await db.prepare('SELECT id FROM projects WHERE id=? AND owner_id=?').bind(projectId,'owner').first())return fail('پروژهٔ انتخاب‌شده وجود ندارد.',422,origin);
+   await db.prepare('UPDATE workspace_tasks SET project_id=?,title=?,description=?,status=?,priority=?,due_date=?,updated_at=? WHERE id=? AND owner_id=?').bind(projectId,title,description,status,priority,dueDate,stamp,id,'owner').run();
+   await recordActivity(db,'وظیفه','ویرایش','وظیفهٔ «'+title+'» ویرایش شد');return json({ok:true},200,origin)
+  }
+  if(req.method==='DELETE'){
+   const current:any=await db.prepare('SELECT title FROM workspace_tasks WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('وظیفه پیدا نشد.',404,origin);
+   await db.prepare('DELETE FROM workspace_tasks WHERE id=? AND owner_id=?').bind(id,'owner').run();await recordActivity(db,'وظیفه','حذف','وظیفهٔ «'+String(current.title).slice(0,160)+'» حذف شد');return json({ok:true},200,origin)
+  }
+ }
+ if(path==='/api/workspace/memories'){
+  if(req.method==='GET'){const rows=await db.prepare('SELECT id,title,content,tags,created_at,updated_at FROM memories WHERE owner_id=? ORDER BY updated_at DESC LIMIT 300').bind('owner').all();return json(rows.results,200,origin)}
+  if(req.method==='POST'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const title=boundedText(b.title,120),content=boundedText(b.content,5000),tags=boundedText(b.tags||'',240,true);
+   if(!title||!content||tags===null)return fail('عنوان و محتوای یادداشت الزامی است و طول فیلدها باید معتبر باشد.',422,origin);
+   const id=uuid();await db.prepare('INSERT INTO memories(id,owner_id,title,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').bind(id,'owner',title,content,tags,stamp,stamp).run();
+   await recordActivity(db,'حافظه','ایجاد','یادداشت «'+title+'» ذخیره شد');return json({id,title,content,tags,created_at:stamp,updated_at:stamp},201,origin)
+  }
+ }
+ const memoryMatch=path.match(/^\/api\/workspace\/memories\/([a-f0-9-]{36})$/i);
+ if(memoryMatch){
+  const id=memoryMatch[1];
+  if(req.method==='PUT'||req.method==='PATCH'){
+   const b=await parseJsonBody(req);if(!b||typeof b!=='object')return fail('بدنهٔ درخواست JSON معتبر نیست.',400,origin);
+   const current:any=await db.prepare('SELECT * FROM memories WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('یادداشت پیدا نشد.',404,origin);
+   const title=b.title===undefined?current.title:boundedText(b.title,120),content=b.content===undefined?current.content:boundedText(b.content,5000),tags=b.tags===undefined?current.tags:boundedText(b.tags,240,true);
+   if(!title||!content||tags===null)return fail('عنوان، محتوا یا برچسب‌ها معتبر نیستند.',422,origin);
+   await db.prepare('UPDATE memories SET title=?,content=?,tags=?,updated_at=? WHERE id=? AND owner_id=?').bind(title,content,tags,stamp,id,'owner').run();await recordActivity(db,'حافظه','ویرایش','یادداشت «'+title+'» ویرایش شد');return json({ok:true},200,origin)
+  }
+  if(req.method==='DELETE'){
+   const current:any=await db.prepare('SELECT title FROM memories WHERE id=? AND owner_id=?').bind(id,'owner').first();if(!current)return fail('یادداشت پیدا نشد.',404,origin);
+   await db.prepare('DELETE FROM memories WHERE id=? AND owner_id=?').bind(id,'owner').run();await recordActivity(db,'حافظه','حذف','یادداشت «'+String(current.title).slice(0,120)+'» حذف شد');return json({ok:true},200,origin)
+  }
+ }
+ if(path==='/api/workspace/activity'&&req.method==='GET'){
+  const rows=await db.prepare('SELECT id,category,action,summary,created_at FROM activity_log WHERE owner_id=? ORDER BY created_at DESC LIMIT 200').bind('owner').all();return json(rows.results,200,origin)
+ }
+ return null;
+}
+
 export default {async fetch(req:Request,env:Env):Promise<Response>{
  const url=new URL(req.url),requestOrigin=req.headers.get('Origin'),origin=requestOrigin||url.origin;
  if(requestOrigin&&requestOrigin!==url.origin&&(!env.ALLOWED_ORIGIN||requestOrigin!==env.ALLOWED_ORIGIN))return fail('Origin not allowed',403,url.origin);
@@ -290,6 +406,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const authResponse=await authRoute(req,env,origin,url);if(authResponse)return authResponse;
   await ensure(env.DB);
   if(!await validOwnerSession(req,env))return fail('برای ادامه، کد شش‌رقمی برنامهٔ Authenticator را وارد کنید.',401,origin);
+  const workspaceResponse=await handleWorkspaceRoute(req,env,origin,url);if(workspaceResponse)return workspaceResponse;
   if(url.pathname==='/api/health'&&req.method==='GET'){try{await env.DB.prepare('SELECT 1').first();return json({ok:true,database:'ok'},200,origin)}catch{return json({ok:false,database:'unavailable'},503,origin)}}
   if(url.pathname==='/api/models'&&req.method==='GET'){const key=await openRouterKey(env.DB,env);if(!key)return fail('ابتدا کلید OpenRouter را در تنظیمات هوش مصنوعی ذخیره کنید.',409,origin);try{return json({models:await getFreeModels(key)},200,origin)}catch(e){return fail(safeError(e),502,origin)}}
   if(url.pathname.startsWith('/api/settings/telegram-user'))return await handleTelegramAccount(req,env,origin);
