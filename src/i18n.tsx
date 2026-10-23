@@ -102,7 +102,6 @@ const en: Record<string,string> = {
 'بخشی از عنوان گفتگو را وارد کن:':'Enter part of a conversation title:',
 'گفتگویی با این عنوان پیدا نشد.':'No conversation with that title was found.',
 'گفتگوی بدون عنوان':'Untitled conversation',
-'گفتگوی تازه':'New chat',
 'سرویس آماده':'Service ready',
 'API در دسترس نیست':'API unavailable',
 'در حال بررسی':'Checking',
@@ -323,7 +322,6 @@ const en: Record<string,string> = {
 'وضعیت اتصال سرویس‌ها':'Service connection status',
 'یادداشت‌های ماندگار و تاریخچه':'Saved notes and history',
 'گزارش فعالیت‌های اخیر':'Recent activity',
-'فضای کار':'Workspace',
 'پروژه بساز، وضعیت را تغییر بده و کارها را به پروژه وصل کن.':'Create projects, update their status, and assign tasks to them.',
 'وظایف، اولویت‌ها، موعد و وضعیت اجرا در فضای ذخیره‌شدهٔ شخصی.':'Tasks, priorities, due dates, and progress in your private workspace.',
 'وضعیت از روی تنظیمات واقعی سرور خوانده می‌شود؛ هیچ اتصال ساختگی سبز نمایش داده نمی‌شود.':'Status comes from actual server settings; unconfigured services are never shown as connected.',
@@ -415,7 +413,6 @@ const en: Record<string,string> = {
 'مدیریت پروژه‌ها':'Projects',
 'مدیریت وظایف':'Tasks',
 'مدیریت حافظه':'Memory',
-'گزارش فعالیت‌ها':'Activity log',
 'پاسخ نامعتبر از سرور دریافت شد.':'The server returned an invalid response.',
 'جست‌وجو':'Search',
 'ایده‌ها را به کارهای واقعی تبدیل کنید':'Turn ideas into real work',
@@ -461,7 +458,7 @@ function localizeNode(node:React.ReactNode, locale:Locale):React.ReactNode {
   return (leading||'')+translateText(core,locale)+(trailing||'');
  }
  if(Array.isArray(node))return node.map((child,i)=><React.Fragment key={i}>{localizeNode(child,locale)}</React.Fragment>);
- if(React.isValidElement(node)){
+ if(React.isValidElement<Record<string,unknown>>(node)){
   const props:Record<string,unknown>={...node.props};
   if(props.dir==='rtl')props.dir='ltr';
   if(typeof props.lang==='string')props.lang='en';
