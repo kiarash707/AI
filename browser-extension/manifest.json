@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "KAYRO AI Helper",
+  "version": "1.0.0",
+  "description": "Prepare the active page title and URL for KAYRO AI only when you click.",
+  "permissions": [
+    "activeTab",
+    "clipboardWrite"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Send page to KAYRO AI"
+  }
+}
