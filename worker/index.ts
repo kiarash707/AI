@@ -110,11 +110,11 @@ async function authRoute(req:Request,env:Env,origin:string,url:URL):Promise<Resp
  if(url.pathname==='/api/auth/status'&&req.method==='GET'){
   const configured=Boolean(await setting(env.DB,'owner_totp_secret'));
   let authenticated=false;try{authenticated=configured&&await validOwnerSession(req,env)}catch{}
-  return json({setupRequired:!configured,setupAvailable:Boolean(env.OWNER_SETUP_TOKEN),authenticated},200,origin);
+  return json({setupRequired:!configured,setupAvailable:Boolean(env.OWNER_SETUP_TOKEN&&env.OWNER_SETUP_TOKEN.length>=32&&env.OWNER_AUTH_ENCRYPTION_KEY),authenticated},200,origin);
  }
  if(url.pathname==='/api/auth/setup'&&req.method==='POST'){
   if(await setting(env.DB,'owner_totp_secret'))return fail('راه‌اندازی قبلاً انجام شده است؛ از کد Authenticator استفاده کنید.',409,origin);
-  if(!env.OWNER_SETUP_TOKEN||env.OWNER_SETUP_TOKEN.length<32)return fail('برای راه‌اندازی اولیه، Secret با نام OWNER_SETUP_TOKEN و حداقل ۳۲ نویسه در Cloudflare تنظیم کنید.',503,origin);
+  if(!env.OWNER_SETUP_TOKEN||env.OWNER_SETUP_TOKEN.length<32)return fail('برای راه‌اندازی اولیه، Secret با نام OWNER_SETUP_TOKEN و حداقل ۳۲ نویسه در Cloudflare تنظیم کنید.',503,origin);if(!env.OWNER_AUTH_ENCRYPTION_KEY)return fail('Secret با نام OWNER_AUTH_ENCRYPTION_KEY را در Cloudflare تنظیم کنید.',503,origin);
   if(await rateLimited(env.DB,'owner-auth-setup',5))return fail('تلاش‌های راه‌اندازی زیاد است؛ یک دقیقه بعد دوباره تلاش کنید.',429,origin);
   let body:any;try{body=await req.json()}catch{return fail('درخواست JSON معتبر نیست.',400,origin)}
   if(typeof body.setup_token!=='string'||body.setup_token.length>512||body.setup_token!==env.OWNER_SETUP_TOKEN)return fail('کد راه‌اندازی اشتباه است.',401,origin);
