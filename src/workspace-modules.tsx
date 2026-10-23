@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+import {Localized, useLocale, type Locale} from './i18n';
 import {Activity, Archive, BookOpen, Check, ChevronLeft, CircleAlert, Clock3, Code2, ExternalLink, FolderKanban, Link2, ListTodo, Pencil, Plus, RefreshCw, Save, Shield, Trash2, Workflow, X, Zap} from 'lucide-react';
 
 type ProjectStatus='planning'|'active'|'paused'|'done';
@@ -24,9 +25,10 @@ const body=(method:string,value:unknown):RequestInit=>({method,body:JSON.stringi
 const projectLabels:Record<ProjectStatus,string>={planning:'در حال برنامه‌ریزی',active:'فعال',paused:'متوقف',done:'تکمیل‌شده'};
 const taskLabels:Record<TaskStatus,string>={todo:'برای انجام',in_progress:'در حال انجام',done:'انجام‌شده'};
 const priorityLabels:Record<Priority,string>={low:'کم',normal:'معمولی',high:'بالا'};
-const dateText=(value:string)=>{try{return new Date(value).toLocaleString('fa-IR',{dateStyle:'medium',timeStyle:'short'})}catch{return value}};
+const dateText=(value:string,locale:Locale='fa')=>{try{return new Date(value).toLocaleString(locale==='fa'?'fa-IR':'en-US',{dateStyle:'medium',timeStyle:'short'})}catch{return value}};
 
 export function WorkspaceModule({nav,onNavigate,notify}:Props){
+ const locale=useLocale();
  const [projects,setProjects]=useState<Project[]>([]),[tasks,setTasks]=useState<Task[]>([]),[memories,setMemories]=useState<Memory[]>([]),[events,setEvents]=useState<Event[]>([]),[integrations,setIntegrations]=useState<Integrations|null>(null),[conversations,setConversations]=useState<Array<{id:string;title:string;updated_at:string}>>([]);
  const [loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState('');
  const [projectEdit,setProjectEdit]=useState<string|null>(null),[projectForm,setProjectForm]=useState({title:'',description:'',status:'active' as ProjectStatus});
@@ -90,7 +92,7 @@ export function WorkspaceModule({nav,onNavigate,notify}:Props){
   try{await api('/workspace/memories/'+m.id,{method:'DELETE'});await reload();notify('یادداشت حذف شد.')}catch(e){setError(e instanceof Error?e.message:'حذف یادداشت ناموفق بود.')}
  }
  const heading=nav==='پروژه‌ها'?'مدیریت پروژه‌های شخصی':nav==='وظایف'?'برنامه‌ریزی و پیگیری وظایف':nav==='اتصالات'?'وضعیت اتصال سرویس‌ها':nav==='افزونه مرورگر'?'افزونهٔ همراه مرورگر':nav==='حافظه و تاریخچه'?'یادداشت‌های ماندگار و تاریخچه':nav==='گزارش فعالیت'?'گزارش فعالیت‌های اخیر':'فضای کار';
- return <div className="workspace-module">
+ return <Localized><div className="workspace-module" dir={locale==='fa'?'rtl':'ltr'} lang={locale}>
   <div className="workspace-module-header"><div><div className="workspace-module-kicker"><Shield size={14}/> فضای خصوصی مالک</div><h2>{heading}</h2><p>{nav==='پروژه‌ها'?'پروژه بساز، وضعیت را تغییر بده و کارها را به پروژه وصل کن.':nav==='وظایف'?'وظایف، اولویت‌ها، موعد و وضعیت اجرا در فضای ذخیره‌شدهٔ شخصی.':nav==='اتصالات'?'وضعیت از روی تنظیمات واقعی سرور خوانده می‌شود؛ هیچ اتصال ساختگی سبز نمایش داده نمی‌شود.':nav==='افزونه مرورگر'?'ابزار کوچک و متن‌باز برای فرستادن نشانی صفحهٔ جاری به KAYRO AI، بدون ارسال خودکار محتوا.':nav==='حافظه و تاریخچه'?'یادداشت‌های شخصی به‌صورت پایدار در D1 ذخیره می‌شوند؛ آن‌ها خودکار وارد مدل نمی‌شوند.':'آخرین تغییرات مهم فضای کار؛ اطلاعات حساس و محتوای کامل پیام‌ها ثبت نمی‌شود.'}</p></div><button className="wm-refresh" disabled={loading} onClick={()=>void reload()}><RefreshCw size={15}/> تازه‌سازی</button></div>
   {error&&<div className="wm-error" role="alert"><CircleAlert size={17}/><span>{error}</span><button onClick={()=>setError('')} aria-label="بستن پیام"><X size={15}/></button></div>}
   {loading&&<div className="wm-loading"><Activity size={17}/> در حال دریافت اطلاعات ذخیره‌شده…</div>}
@@ -105,9 +107,9 @@ export function WorkspaceModule({nav,onNavigate,notify}:Props){
    <IntegrationCard title="افزونهٔ مرورگر" description="کمک سریع از صفحهٔ جاری" configured={false} statusLabel="قابل نصب" detail="فایل‌های افزونه داخل مخزن قرار دارند؛ نصب محلی از طریق Load unpacked انجام می‌شود." icon={<Code2 size={20}/>} action="راهنمای نصب افزونه" onClick={()=>onNavigate('افزونه مرورگر')}/>
   </div>}
   {!loading&&nav==='افزونه مرورگر'&&<><section className="wm-card"><div className="wm-card-title"><Code2 size={19}/><div><h3>افزونهٔ کوچک و خصوصی KAYRO</h3><small>Chrome و مرورگرهای مبتنی بر Chromium · Manifest V3</small></div></div><p className="wm-long-copy">این افزونه عنوان و نشانی صفحهٔ جاری را فقط پس از کلیک خودت آماده می‌کند و آن را در کلیپ‌بورد می‌گذارد؛ سپس KAYRO AI را باز می‌کند. محتوای صفحه، کوکی‌ها، گذرواژه‌ها و تاریخچهٔ مرورگر به‌طور خودکار خوانده یا ارسال نمی‌شود.</p><div className="wm-extension-features"><div><Shield size={18}/><b>بدون کلید API</b><small>هیچ Secretی داخل افزونه نیست.</small></div><div><Code2 size={18}/><b>دسترسی محدود</b><small>فقط تب فعال پس از اقدام کاربر.</small></div><div><ExternalLink size={18}/><b>بدون آپلود خودکار</b><small>متن فقط به انتخاب خودت منتقل می‌شود.</small></div></div><div className="wm-install"><h4>نصب دستی روی Chrome / Chromium</h4><ol><li>مخزن <a href="https://github.com/kiarash707/AI/tree/main/browser-extension" target="_blank" rel="noreferrer">browser-extension در GitHub</a> را دانلود کن و ZIP را Extract کن.</li><li>در نوار آدرس مرورگر <code>chrome://extensions</code> را باز کن.</li><li>Developer mode را روشن و روی <b>Load unpacked</b> کلیک کن.</li><li>پوشهٔ <code>browser-extension</code> را انتخاب کن و افزونه را Pin کن.</li></ol></div><button className="wm-primary" onClick={()=>onNavigate('گفتگوها')}><Plus size={15}/> رفتن به گفتگو و تحلیل صفحه</button></section></>}
- </div>;
+ </div></Localized>;
 }
 
 function IntegrationCard({title,description,configured,detail,icon,action,statusLabel,onClick}:{title:string;description:string;configured:boolean;statusLabel?:string;detail:string;icon:React.ReactNode;action:string;onClick:()=>void}){
- return <article className="wm-card wm-integration-card"><div className={'wm-integration-icon '+(configured?'is-ready':'')}>{icon}</div><div className="wm-item-heading"><h3>{title}</h3><span className={'wm-badge '+(configured?'active':'paused')}>{statusLabel||(configured?'تنظیم شده':'نیازمند تنظیم')}</span></div><p>{description}</p><small>{detail}</small><button className="wm-secondary" onClick={onClick}>{action}<ChevronLeft size={15}/></button></article>;
+ return <Localized><article className="wm-card wm-integration-card"><div className={'wm-integration-icon '+(configured?'is-ready':'')}>{icon}</div><div className="wm-item-heading"><h3>{title}</h3><span className={'wm-badge '+(configured?'active':'paused')}>{statusLabel||(configured?'تنظیم شده':'نیازمند تنظیم')}</span></div><p>{description}</p><small>{detail}</small><button className="wm-secondary" onClick={onClick}>{action}<ChevronLeft size={15}/></button></article></Localized>;
 }
