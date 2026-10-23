@@ -13,7 +13,7 @@ export interface Env {
 }
 type Model = {id:string;name:string;context_length:number;input_price:number;output_price:number;modalities:string[];tools:boolean;recommended_for:string[]};
 const encoder=new TextEncoder(), decoder=new TextDecoder();
-const responseHeaders=(origin:string)=>({'content-type':'application/json; charset=utf-8','access-control-allow-origin':origin,'access-control-allow-methods':'GET,POST,PUT,DELETE,OPTIONS','access-control-allow-headers':'content-type,authorization,x-telegram-bot-api-secret-token','vary':'Origin','x-content-type-options':'nosniff','x-frame-options':'DENY','referrer-policy':'strict-origin-when-cross-origin','cache-control':'no-store'});
+const responseHeaders=(origin:string)=>({'content-type':'application/json; charset=utf-8','access-control-allow-origin':origin,'access-control-allow-methods':'GET,POST,PUT,PATCH,DELETE,OPTIONS','access-control-allow-headers':'content-type,authorization,x-telegram-bot-api-secret-token','vary':'Origin','x-content-type-options':'nosniff','x-frame-options':'DENY','referrer-policy':'strict-origin-when-cross-origin','cross-origin-opener-policy':'same-origin','cross-origin-resource-policy':'same-origin','permissions-policy':'camera=(), microphone=(), geolocation=()','content-security-policy':"default-src 'none'; base-uri 'none'; frame-ancestors 'none'",'strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store'});
 const json=(data:unknown,status=200,origin='*')=>new Response(JSON.stringify(data),{status,headers:responseHeaders(origin)});
 const fail=(message:string,status=400,origin='*')=>json({error:message},status,origin);
 const uuid=()=>crypto.randomUUID(); const now=()=>new Date().toISOString();
@@ -404,6 +404,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:responseHeaders(origin)});
  if(url.pathname==='/api/telegram/webhook'&&req.method==='POST')return handleTelegram(req,env);
  if(!url.pathname.startsWith('/api/'))return env.ASSETS?env.ASSETS.fetch(req):new Response('Not Found',{status:404});
+ if(['POST','PUT','PATCH'].includes(req.method)&&Number(req.headers.get('content-length')||0)>1048576)return fail('درخواست از حد مجاز یک مگابایت بزرگ‌تر است.',413,origin);
  try{
   const authResponse=await authRoute(req,env,origin,url);if(authResponse)return authResponse;
   await ensure(env.DB);
