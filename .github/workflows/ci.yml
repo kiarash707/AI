@@ -38,6 +38,29 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Validate browser extension
+        run: |
+          node --check browser-extension/popup.js
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('browser-extension/manifest.json','utf8')); if(m.manifest_version!==3 || !fs.existsSync('browser-extension/popup.html')) process.exit(1); console.log('Manifest V3 and popup files are valid.')"
+
+      - name: Validate SQL migrations
+        run: |
+          python - <<'PY'
+          import pathlib, sqlite3
+          db = sqlite3.connect(':memory:')
+          for path in sorted(pathlib.Path('migrations').glob('*.sql')):
+              db.executescript(path.read_text(encoding='utf-8'))
+          tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          required = {'projects', 'workspace_tasks', 'memories', 'activity_log'}
+          missing = required - tables
+          if missing:
+              raise SystemExit(f'Missing workspace tables: {sorted(missing)}')
+          print('All migration SQL executed successfully.')
+          PY
+
+      - name: Validate Telegram bridge syntax
+        run: python -m py_compile telegram-user-service/main.py
+
       - name: Build production frontend
         run: npm run build
 
