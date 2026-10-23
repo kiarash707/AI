@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KAYRO AI Helper</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0a111d;color:#eaf1fc}
+    *{box-sizing:border-box}body{margin:0;width:320px;padding:18px;background:radial-gradient(ellipse at 50% 0,#1b3151 0,transparent 65%),#0a111d}
+    .mark{width:42px;height:42px;display:grid;place-items:center;border:1px solid #3a5782;background:#172a45;color:#c1d8ff;border-radius:13px;font-weight:900;font-size:18px}
+    h1{font-size:16px;margin:14px 0 5px}p{color:#a9b9d1;font-size:12px;line-height:1.9;margin:0 0 14px}
+    .preview{padding:10px;border:1px solid #2b3e59;border-radius:10px;background:#101b2c;margin-bottom:12px}
+    .preview b{display:block;font-size:11px;margin-bottom:5px;overflow-wrap:anywhere}.preview span{display:block;direction:ltr;text-align:left;color:#8fa8cb;font-size:10px;overflow-wrap:anywhere;line-height:1.7}
+    button{width:100%;padding:11px;border:0;border-radius:9px;font:700 12px system-ui;cursor:pointer;margin-top:8px}
+    .primary{background:linear-gradient(135deg,#c8deff,#83b2ff);color:#10203c}.secondary{background:#132239;border:1px solid #344b6c;color:#cbdcf5}
+    button:disabled{opacity:.5;cursor:wait}.note{margin-top:13px;font-size:10px;color:#8094b4;line-height:1.8}.message{margin-top:10px;padding:9px;border:1px solid #3b594e;border-radius:8px;background:#132620;color:#a8e5c8;font-size:11px;line-height:1.7}.message.error{border-color:#72464a;background:#301d22;color:#ffd2d5}
+  </style>
+</head>
+<body>
+  <div class="mark" aria-hidden="true">K</div>
+  <h1>KAYRO AI · دستیار مرورگر</h1>
+  <p>عنوان و نشانی صفحهٔ جاری فقط بعد از کلیک تو آماده می‌شود. محتوای صفحه خودکار خوانده یا ارسال نمی‌شود.</p>
+  <div class="preview"><b id="page-title">در حال خواندن عنوان تب…</b><span id="page-url">نشانی صفحه</span></div>
+  <button id="open" class="primary">کپی و بازکردن KAYRO AI</button>
+  <button id="copy" class="secondary">فقط کپی عنوان و نشانی</button>
+  <div id="message" role="status" aria-live="polite"></div>
+  <div class="note">بدون API key · بدون رهگیری · بدون ارسال خودکار · فقط صفحه‌ای که خودت انتخاب کرده‌ای</div>
+  <script src="popup.js"></script>
+</body>
+</html>
