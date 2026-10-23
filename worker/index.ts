@@ -105,7 +105,7 @@ async function issueOwnerSession(env:Env,origin:string){
  const expires=Math.floor(Date.now()/1000)+43200;
  await env.DB.prepare('INSERT INTO auth_sessions(token_hash,expires_at,created_at) VALUES(?,?,?)').bind(hash,expires,now()).run();
  await recordActivity(env.DB,'امنیت','ورود','ورود موفق با Authenticator');
- const res=json({ok:true,expires_at:expires},200,origin);
+ const res=json({ok:true,expires_at:expires},200,origin),headers=new Headers(res.headers);
  headers.append('Set-Cookie',`kayro_auth=${token}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
  return new Response(res.body,{status:res.status,headers});
 }
