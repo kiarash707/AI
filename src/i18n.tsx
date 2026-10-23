@@ -26,6 +26,14 @@ const en: Record<string,string> = {
 'ورود امن':'Sign in securely',
 'نشست امن منقضی شده است یا دسترسی تأیید نشد. صفحه را تازه کن و کد Authenticator را دوباره وارد کن.':'Your session expired or access was denied. Refresh the page and enter a new Authenticator code.',
 'درخواست تنظیمات ناموفق بود.':'The settings request failed.',
+'آخرین فعالیت:':'Last activity:',
+'آخرین آزمایش موفق:':'Last successful test:',
+'اتصال آزمایش‌شده':'Connection tested',
+'کلید ذخیره شده؛ اتصال آزمایش‌نشده':'Key saved; connection not tested',
+'مدیریت':'Manage',
+'در حال دریافت':'Loading',
+'فضای خصوصی مالک':'Private owner workspace',
+'موضوع':'Topic',
 'نمای کلی':'Overview',
 'رایگان · انتخاب خودکار':'Free · Automatic selection',
 'پاسخ فهرست گفتگوها معتبر نیست.':'The conversation list response is invalid.',
@@ -405,15 +413,26 @@ export function translateText(value:string, locale:Locale):string {
  const freeModels=value.match(/^(\d+) مدل رایگان در دسترس$/);
  if(freeModels)return `${freeModels[1]} free models available`;
  const chats=value.match(/^(\d+) گفتگوها$/);
- if(chats)return `${chats[1]} chats`;
- const tasks=value.match(/^(⁨)?(\d+) وظیفه/);
- if(tasks)return `${tasks[2]} tasks`;
+ if(chats)return chats[1]+" chats";
+ const taskCount=value.match(/^(\d+) وظیفه/);
+ if(taskCount)return taskCount[1]+" tasks";
+ const connectedModels=value.match(/^اتصال موفق؛ (\d+) مدل رایگان یافت شد\.$/);
+ if(connectedModels)return "Connected successfully; "+connectedModels[1]+" free models found.";
+ const projectDelete=value.match(/^پروژهٔ «(.+)» حذف شود؟ وظایف آن حفظ و از پروژه جدا می‌شوند\.$/);
+ if(projectDelete)return "Delete project “"+projectDelete[1]+"”? Its tasks will be kept and detached from the project.";
+ const taskDelete=value.match(/^وظیفهٔ «(.+)» حذف شود؟$/);
+ if(taskDelete)return "Delete task “"+taskDelete[1]+"”?";
+ const noteDelete=value.match(/^یادداشت «(.+)» برای همیشه حذف شود؟$/);
+ if(noteDelete)return "Permanently delete note “"+noteDelete[1]+"”?";
+ const workspaceHeading=value.match(/^مدیریت (.+) در فضای کار KAYRO\.$/);
+ if(workspaceHeading)return "Manage "+translateText(workspaceHeading[1],'en')+" in the KAYRO workspace.";
  return value;
 }
 
 function localizeNode(node:React.ReactNode, locale:Locale):React.ReactNode {
  if(locale==='fa'||node===null||node===undefined||typeof node==='boolean'||typeof node==='number')return node;
  if(typeof node==='string'){
+  if(!node.trim())return node;
   const leading=node.match(/^\s*/)?.[0]||'',trailing=node.match(/\s*$/)?.[0]||'';
   const core=node.slice(leading.length,node.length-trailing.length);
   return (leading||'')+translateText(core,locale)+(trailing||'');
