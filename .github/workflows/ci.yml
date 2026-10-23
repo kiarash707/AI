@@ -68,9 +68,11 @@ jobs:
         run: |
           mkdir -p deployment
           cp -R dist/. deployment/
+          cp _headers deployment/_headers
           npx tsc -p tsconfig.worker.json --noEmit false --rootDir worker --outDir deployment
           mv deployment/index.js deployment/_worker.js
           test -s deployment/index.html
+          test -s deployment/_headers
           test -s deployment/_worker.js
 
       - name: Upload deployable bundle
