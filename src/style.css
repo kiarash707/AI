@@ -181,3 +181,25 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 @media(prefers-reduced-motion:reduce){
   button,input,textarea{transition:none}
 }
+
+
+/* Persistent Persian/English interface switch and LTR layout corrections */
+.language-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:42px;min-height:34px;padding:7px 10px;border:1px solid #344d70;border-radius:10px;background:linear-gradient(135deg,#172740,#101a2b);color:#c9ddff;font-size:11px;font-weight:800;letter-spacing:.02em;white-space:nowrap;box-shadow:0 5px 16px rgba(0,0,0,.12)}
+.language-toggle:hover{border-color:#7599d5;background:#1a2d49;color:#f0f6ff;transform:translateY(-1px)}
+.app[dir="ltr"] .sidebar{border-left:0;border-right:1px solid var(--line);box-shadow:inset 1px 0 0 rgba(255,255,255,.015)}
+.app[dir="ltr"] .sidebar .workspace,.app[dir="ltr"] .navitem,.app[dir="ltr"] .recent-item,.app[dir="ltr"] .context-chat,.app[dir="ltr"] .dash-chat,.app[dir="ltr"] .quick-grid button{direction:ltr;text-align:left}
+.app[dir="ltr"] .sidebar .workspace>svg{margin-right:0;margin-left:auto}
+.app[dir="ltr"] .newchat kbd{margin-right:0;margin-left:auto}
+.app[dir="ltr"] .navitem.selected{box-shadow:inset 2px 0 #82adff}
+.app[dir="ltr"] .chat-main{border-left:0;border-right:1px solid #202d42}
+.app[dir="ltr"] .context{border-right:0;border-left:1px solid #202d42}
+.app[dir="ltr"] .context-note{direction:ltr}
+.app[dir="ltr"] .thinking{padding-right:0;padding-left:39px}
+.app[dir="ltr"] .composer-hint{margin-right:0;margin-left:8px}
+.app[dir="ltr"] .toast{left:auto;right:25px}
+.app[dir="ltr"] .stat>span{right:auto;left:52px}
+.app[dir="ltr"] .callout>div,.app[dir="ltr"] .callout>button{direction:ltr}
+@media(max-width:800px){
+ .app[dir="ltr"] .sidebar{right:auto;left:0;transform:translateX(-105%);box-shadow:20px 0 55px rgba(0,0,0,.38)}
+ .app[dir="ltr"] .sidebar.show{transform:translateX(0)}
+}
