@@ -20,3 +20,10 @@
 .auth-logout{position:fixed;z-index:50;left:14px;bottom:14px;display:flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid #344761;border-radius:10px;background:#111d30;color:#c7d9f6;font-size:11px;box-shadow:0 8px 30px #0004;cursor:pointer}
 .auth-logout:disabled{opacity:.5}
 @media(max-width:480px){.auth-card{padding:24px 18px;border-radius:18px}.auth-card h1{font-size:21px}.auth-screen{padding:14px}}
+
+.auth-screen{position:relative}
+.auth-lang-control{position:absolute;top:14px;right:14px;z-index:60}
+.auth-screen[dir="ltr"] .auth-lang-control{right:auto;left:14px}
+.auth-screen[dir="ltr"] .auth-label{text-align:left}
+.auth-screen[dir="ltr"] .auth-error{text-align:left}
+.auth-screen[dir="ltr"] .auth-logout{left:auto;right:14px}
