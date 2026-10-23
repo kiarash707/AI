@@ -16,6 +16,7 @@ async function api<T>(path:string,init:RequestInit={}):Promise<T>{
   if(init.body&&!headers.has('content-type'))headers.set('content-type','application/json');
   const response=await fetch('/api'+path,{...init,headers,cache:'no-store'});
   let data:any=null;try{data=await response.json()}catch{}
+  if(response.status===401)window.dispatchEvent(new Event('kayro-auth-expired'));
   if(!response.ok)throw new Error(data?.error||data?.detail|| (response.status===401?'نشست منقضی شده است؛ دوباره با Authenticator وارد شوید.':`درخواست ناموفق بود (HTTP ${response.status}).`));
   return data as T;
 }
