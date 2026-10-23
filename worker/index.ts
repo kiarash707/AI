@@ -18,7 +18,8 @@ const json=(data:unknown,status=200,origin='*')=>new Response(JSON.stringify(dat
 const fail=(message:string,status=400,origin='*')=>json({error:message},status,origin);
 const uuid=()=>crypto.randomUUID(); const now=()=>new Date().toISOString();
 const safeError=(e:unknown)=>{const s=String(e instanceof Error?e.message:e);return s.replace(/(?:sk-or-v1-|sk-)[A-Za-z0-9_-]{12,}/g,'[redacted]').slice(0,350)};
-async function ensure(db:D1Database){await db.batch([
+let schemaReady=false;
+async function ensure(db:D1Database){if(schemaReady)return;await db.batch([
  db.prepare('CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0)'),
  db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'web', created_at TEXT NOT NULL)"),
  db.prepare('CREATE INDEX IF NOT EXISTS messages_conv_created ON messages(conversation_id,created_at)'),
@@ -38,7 +39,7 @@ async function ensure(db:D1Database){await db.batch([
  db.prepare('CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags TEXT NOT NULL DEFAULT \'\', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)'),
  db.prepare('CREATE INDEX IF NOT EXISTS memories_owner_updated ON memories(owner_id,updated_at)'),
  db.prepare('CREATE TABLE IF NOT EXISTS activity_log (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, category TEXT NOT NULL, action TEXT NOT NULL, summary TEXT NOT NULL, created_at TEXT NOT NULL)'),
- db.prepare('CREATE INDEX IF NOT EXISTS activity_log_owner_created ON activity_log(owner_id,created_at)')]);}
+ db.prepare('CREATE INDEX IF NOT EXISTS activity_log_owner_created ON activity_log(owner_id,created_at)')]);schemaReady=true;}
 async function rateLimited(db:D1Database,key:string,limit=6){const t=Math.floor(Date.now()/60000),row:any=await db.prepare('SELECT window_start,count FROM rate_limits WHERE key=?').bind(key).first();if(row&&row.window_start===t&&row.count>=limit)return true;await db.prepare('INSERT INTO rate_limits(key,window_start,count) VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET window_start=excluded.window_start,count=CASE WHEN rate_limits.window_start=excluded.window_start THEN rate_limits.count+1 ELSE 1 END').bind(key,t).run();return false;}
 async function setting(db:D1Database,key:string){const r:any=await db.prepare('SELECT value FROM settings WHERE key=?').bind(key).first();return typeof r?.value==='string'?r.value:null;}
 function fromB64(s:string):Uint8Array<ArrayBuffer>{const clean=s.replace(/-/g,'+').replace(/_/g,'/');const binary=atob(clean.padEnd(Math.ceil(clean.length/4)*4,'='));const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
@@ -103,7 +104,8 @@ async function issueOwnerSession(env:Env,origin:string){
  const hash=toB64(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(token))));
  const expires=Math.floor(Date.now()/1000)+43200;
  await env.DB.prepare('INSERT INTO auth_sessions(token_hash,expires_at,created_at) VALUES(?,?,?)').bind(hash,expires,now()).run();
- const res=json({ok:true,expires_at:expires},200,origin),headers=new Headers(res.headers);
+ await recordActivity(env.DB,'امنیت','ورود','ورود موفق با Authenticator');
+ const res=json({ok:true,expires_at:expires},200,origin);
  headers.append('Set-Cookie',`kayro_auth=${token}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
  return new Response(res.body,{status:res.status,headers});
 }
@@ -293,7 +295,7 @@ type WorkspaceProject={id:string;title:string;description:string;status:'active'
 type WorkspaceTask={id:string;title:string;description:string;status:'todo'|'in_progress'|'done';priority:'low'|'normal'|'high';project_id:string|null;due_date:string|null};
 async function recordActivity(db:D1Database,category:string,action:string,summary:string){
  await db.prepare('INSERT INTO activity_log(id,owner_id,category,action,summary,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),'owner',category.slice(0,40),action.slice(0,60),summary.slice(0,240),now()).run();
- await db.prepare('DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log WHERE owner_id=? ORDER BY created_at DESC LIMIT 200)').bind('owner').run();
+ await db.prepare('DELETE FROM activity_log WHERE owner_id=? AND id NOT IN (SELECT id FROM activity_log WHERE owner_id=? ORDER BY created_at DESC LIMIT 200)').bind('owner','owner').run();
 }
 function boundedText(v:unknown,max:number,optional=false):string|null{
  if(typeof v!=='string')return optional?'':null;
