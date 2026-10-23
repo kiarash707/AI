@@ -85,6 +85,7 @@ function cookieValue(req:Request,name:string){
  const prefix=name+'=';return(req.headers.get('Cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(prefix))?.slice(prefix.length)||'';
 }
 async function validOwnerSession(req:Request,env:Env){
+ if(!await setting(env.DB,'owner_totp_secret'))return false;
  const token=cookieValue(req,'kayro_auth');if(!/^[a-f0-9]{64}$/.test(token))return false;
  const hash=toB64(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(token))));
  const row:any=await env.DB.prepare('SELECT expires_at FROM auth_sessions WHERE token_hash=?').bind(hash).first();
