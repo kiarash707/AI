@@ -77,3 +77,5 @@
 .wm-install a{color:#9fc0ff;text-decoration:underline;text-underline-offset:3px}.wm-install code{direction:ltr;display:inline-block;color:#d6e5ff;background:#18263b;padding:2px 5px;border-radius:4px}
 @media(max-width:960px){.wm-columns{grid-template-columns:minmax(0,1fr)}.wm-task-form{grid-template-columns:repeat(2,minmax(0,1fr))}.wm-task-description{grid-column:span 2}}
 @media(max-width:600px){.workspace-module-header{align-items:flex-start}.workspace-module-header h2{font-size:18px}.wm-card{padding:14px}.wm-task-form{grid-template-columns:minmax(0,1fr)}.wm-task-description{grid-column:auto}.wm-integration-grid{grid-template-columns:minmax(0,1fr)}.wm-extension-features{grid-template-columns:minmax(0,1fr)}.wm-item{gap:8px}.wm-item-actions{flex-wrap:wrap;justify-content:flex-end}.wm-item-actions select{max-width:110px}.wm-item-heading{gap:5px}}
+
+.composer-file-input{display:none}
