@@ -203,3 +203,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
  .app[dir="ltr"] .sidebar{right:auto;left:0;transform:translateX(-105%);box-shadow:20px 0 55px rgba(0,0,0,.38)}
  .app[dir="ltr"] .sidebar.show{transform:translateX(0)}
 }
+
+/* Functional context panel collapse/restore controls */
+.chat-layout.context-hidden{grid-template-columns:minmax(0,1fr)}
+.chat-layout .context.context-hidden{display:none}
+@media(max-width:800px){.context-toggle{display:none}}
